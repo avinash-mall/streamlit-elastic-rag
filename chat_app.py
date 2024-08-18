@@ -49,30 +49,15 @@ debug_mode = st.sidebar.checkbox("Enable Debug Mode")
 # Utility Functions
 def search_elasticsearch(query):
     query_embedding = model.encode(query).tolist()
-    similarity_type = os.getenv("SIMILARITY_TYPE", "cosine")
-
-    script_source = {
-        "cosine": "cosineSimilarity(params.query_vector, 'embedding') + 1.0",
-        "dot_product": "dotProduct(params.query_vector, 'embedding')",
-        "max_inner_product": "maxInnerProduct(params.query_vector, 'embedding') + 1.0"
-    }[similarity_type]
 
     try:
         response = es.search(index="_all", body={
             "size": num_results,
             "query": {
-                # "script_score": {
-                #     "query": {
-                #         "match_all": {}
-                #     },
-                #     "script": {
-                #         "source": script_source,
-                #         "params": {"query_vector": query_embedding}
-                #     }
-                # }
                 "knn": {
                     "query_vector": query_embedding,
-                    "field": "embedding"
+                    "field": "embedding",
+                    "k": 3
                 }
             }
         })
