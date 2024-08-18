@@ -1,7 +1,7 @@
 import streamlit as st
 from openai import OpenAI, APIConnectionError, APIStatusError, RateLimitError
 import os
-from elasticsearch import Elasticsearch
+from elasticsearch import Elasticsearch, exceptions
 from sentence_transformers import SentenceTransformer
 from dotenv import load_dotenv
 
@@ -23,7 +23,6 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 OPENAI_MODEL = os.getenv("OPENAI_MODEL")
 instruction_prompt = os.getenv("INSTRUCTION_PROMPT")
 num_results = int(os.getenv("NUM_RESULTS", 10))  # Default to 10 if not provided
-similarity_metric = os.getenv("SIMILARITY_METRIC", "cosine")  # Default to cosine
 
 # Set page configuration
 st.set_page_config(page_title="RAG Chatbot", page_icon="💬", layout="wide")
@@ -47,36 +46,41 @@ st.sidebar.title("Settings")
 # Toggle for enabling debug mode
 debug_mode = st.sidebar.checkbox("Enable Debug Mode")
 
-
 # Utility Functions
 def search_elasticsearch(query):
     query_embedding = model.encode(query).tolist()
+    similarity_type = os.getenv("SIMILARITY_TYPE", "cosine")
 
-    # Use the appropriate script for the similarity metric
-    if similarity_metric == "dot_product":
-        script_source = "dotProduct(params.query_vector, 'embedding') + 1.0"
-    elif similarity_metric == "max_inner_product":
-        script_source = "maxInnerProduct(params.query_vector, 'embedding')"
-    else:
-        script_source = "cosineSimilarity(params.query_vector, 'embedding') + 1.0"
+    script_source = {
+        "cosine": "cosineSimilarity(params.query_vector, 'embedding') + 1.0",
+        "dot_product": "dotProduct(params.query_vector, 'embedding')",
+        "max_inner_product": "maxInnerProduct(params.query_vector, 'embedding') + 1.0"
+    }[similarity_type]
 
-    # Perform the search
-    response = es.search(index="_all", body={
-        "size": num_results,
-        "query": {
-            "script_score": {
-                "query": {
-                    "match_all": {}
-                },
-                "script": {
-                    "source": script_source,
-                    "params": {"query_vector": query_embedding}
+    try:
+        response = es.search(index="_all", body={
+            "size": num_results,
+            "query": {
+                "script_score": {
+                    "query": {
+                        "match_all": {}
+                    },
+                    "script": {
+                        "source": script_source,
+                        "params": {"query_vector": query_embedding}
+                    }
                 }
             }
-        }
-    })
-    hits = response['hits']['hits']
-    return hits
+        })
+        hits = response['hits']['hits']
+        return hits
+    except exceptions.RequestError as e:
+        print(f"Request Error: {e.info}")
+    except exceptions.ConnectionError as e:
+        print(f"Connection Error: {e.info}")
+    except Exception as e:
+        print(f"General Error: {str(e)}")
+
 
 
 # Title of the app
