@@ -2,7 +2,7 @@ import streamlit as st
 import os
 import hashlib
 from datetime import datetime
-from elasticsearch import Elasticsearch
+from elasticsearch import Elasticsearch, ElasticsearchWarning
 from dotenv import load_dotenv
 from sentence_transformers import SentenceTransformer
 from semantic_text_splitter import TextSplitter
@@ -15,6 +15,10 @@ import psutil
 import requests
 import time
 import pandas as pd
+import warnings
+
+# Suppress Elasticsearch system indices warnings
+warnings.filterwarnings("ignore", category=ElasticsearchWarning)
 
 # Load environment variables from .env file
 load_dotenv()
@@ -37,21 +41,25 @@ splitter = TextSplitter.from_huggingface_tokenizer(tokenizer, max_tokens)
 # Admin page title
 st.title("🔧 Admin Page")
 
+
 # Utility Functions
 def clean_text(text):
     text = re.sub(r'[^\P{C}]+', '', text)
     text = re.sub(r'\s{2,}', ' ', text)
     return text.strip()
 
+
 def split_text_semantically(text):
     chunks = splitter.chunks(text)
     return chunks
+
 
 def generate_unique_id(text):
     hash_object = hashlib.sha256()
     hash_object.update(text.encode('utf-8'))
     unique_id = hash_object.hexdigest()
     return unique_id
+
 
 def extract_text_from_pdf(file):
     pdf_document = fitz.open(stream=file.read(), filetype="pdf")
@@ -61,6 +69,7 @@ def extract_text_from_pdf(file):
         text += page.get_text()
     pdf_document.close()
     return clean_text(text)
+
 
 def extract_text_from_file(uploaded_file):
     file_type = uploaded_file.type
@@ -74,12 +83,14 @@ def extract_text_from_file(uploaded_file):
         st.error("Unsupported file type.")
         return None
 
+
 def extract_text_from_word(file):
     doc = Document(file)
     text = ''
     for paragraph in doc.paragraphs:
         text += paragraph.text + '\n'
     return clean_text(text)
+
 
 def index_text(index_name, text, document_name, total_files, file_number):
     clean_text_content = clean_text(text)
@@ -104,21 +115,23 @@ def index_text(index_name, text, document_name, total_files, file_number):
 
     my_bar.empty()
 
+
 def list_documents(index_name: str):
     query = {
-        "size": 1000,  # Adjust as needed to list more or fewer documents
+        "size": 10000,  # Adjust as needed to list more or fewer documents
         "_source": ["document_name", "timestamp"],
         "query": {
             "match_all": {}
         }
     }
     response = es.search(index=index_name, body=query)
-    
+
     document_data = {}
     for hit in response["hits"]["hits"]:
         source = hit["_source"]
-        doc_name = source["document_name"]
-        timestamp = source["timestamp"]
+        doc_name = source.get("document_name", "Unknown Document")
+        timestamp = source.get("timestamp", "No Timestamp")
+
         if doc_name in document_data:
             document_data[doc_name]["number_of_chunks"] += 1
         else:
@@ -127,13 +140,22 @@ def list_documents(index_name: str):
                 "number_of_chunks": 1,
                 "timestamp": timestamp
             }
-    
+
+    if not document_data:
+        return pd.DataFrame(columns=["document_name", "number_of_chunks", "date_time_added"])
+
     # Convert to DataFrame
     document_df = pd.DataFrame(document_data.values())
-    document_df["timestamp"] = pd.to_datetime(document_df["timestamp"]).dt.strftime('%Y-%m-%d %H:%M:%S')
+    if "timestamp" in document_df.columns:
+        document_df["timestamp"] = pd.to_datetime(document_df["timestamp"], errors='coerce').dt.strftime(
+            '%Y-%m-%d %H:%M:%S')
+    else:
+        document_df["timestamp"] = "No Timestamp"
+
     document_df = document_df.rename(columns={"timestamp": "date_time_added"})
 
     return document_df
+
 
 # Index Management Functions
 def create_index(index_name: str, dims: int):
@@ -158,12 +180,14 @@ def create_index(index_name: str, dims: int):
     es.indices.create(index=index_name, body={"mappings": mappings})
     st.success(f"Index '{index_name}' with {dims} dimensions and similarity '{similarity_type}' created successfully")
 
+
 def delete_index(index_name: str):
     if not es.indices.exists(index=index_name):
         st.error("Index not found")
         return
     es.indices.delete(index=index_name)
     st.success(f"Index '{index_name}' deleted successfully")
+
 
 # Sidebar settings
 st.sidebar.title("Admin Settings")
@@ -198,7 +222,8 @@ elif index_action == "List Documents":
             st.write(f"No documents found in index '{selected_index_name}'.")
 
 # Allow multiple file uploads
-uploaded_files = st.file_uploader("Upload text, PDF, or Word documents", type=["txt", "pdf", "docx"], accept_multiple_files=True)
+uploaded_files = st.file_uploader("Upload text, PDF, or Word documents", type=["txt", "pdf", "docx"],
+                                  accept_multiple_files=True)
 
 if uploaded_files:
     indexes = [index for index in es.indices.get_alias(index="*").keys() if not index.startswith('.')]
@@ -214,6 +239,7 @@ if uploaded_files:
 default_display_metrics = os.getenv("DEFAULT_DISPLAY_METRICS", "False").lower() == "true"
 display_metrics = st.sidebar.checkbox("Display CPU, Memory, and Model Health", value=default_display_metrics)
 
+
 def get_model_health():
     try:
         health_url = f"{os.getenv('OPENAI_BASE_URL')}/health"
@@ -225,6 +251,7 @@ def get_model_health():
             return "unknown"
     except Exception as e:
         return f"error ({str(e)})"
+
 
 if display_metrics:
     interval = int(os.getenv("INTERVAL", 5000))
