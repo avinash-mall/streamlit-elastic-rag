@@ -1,9 +1,13 @@
 import streamlit as st
 from openai import OpenAI, APIConnectionError, APIStatusError, RateLimitError
 import os
-from elasticsearch import Elasticsearch, exceptions
+from elasticsearch import Elasticsearch, exceptions, ElasticsearchWarning
 from sentence_transformers import SentenceTransformer
 from dotenv import load_dotenv
+import warnings
+
+# Suppress Elasticsearch system indices warnings
+warnings.filterwarnings("ignore", category=ElasticsearchWarning)
 
 # Load environment variables from .env file
 load_dotenv()
