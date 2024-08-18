@@ -23,6 +23,8 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 OPENAI_MODEL = os.getenv("OPENAI_MODEL")
 instruction_prompt = os.getenv("INSTRUCTION_PROMPT")
 num_results = int(os.getenv("NUM_RESULTS", 10))  # Default to 10 if not provided
+num_candidates = int(os.getenv("NUM_CANDIDATES", 100))
+min_score = float(os.getenv("MIN_SCORE", 1.7))
 
 # Set page configuration
 st.set_page_config(page_title="RAG Chatbot", page_icon="💬", layout="wide")
@@ -52,21 +54,23 @@ def search_elasticsearch(query):
 
     try:
         response = es.search(index="_all", body={
-            "size": num_results,
             "query": {
                 "knn": {
                     "query_vector": query_embedding,
                     "field": "embedding",
-                    "k": 3
+                    "k": num_results,
+                    "num_candidates": num_candidates
                 }
-            }
+            },
+            "min_score": min_score
         })
         hits = response['hits']['hits']
+        print([d['_score'] for d in hits])
         return hits
     except exceptions.RequestError as e:
         print(f"Request Error: {e.info}")
     except exceptions.ConnectionError as e:
-        print(f"Connection Error: {e.info}")
+        print(f"Connection Error: {e.errors}")
     except Exception as e:
         print(f"General Error: {str(e)}")
 
@@ -107,7 +111,7 @@ if prompt := st.chat_input("How can I help you?"):
                     # Adding structured context with document names and timestamps
                     structured_context = ""
                     for chunk, doc_name, timestamp in zip(context_chunks, document_names, timestamps):
-                        structured_context += f"Document Name: {doc_name}\nTimestamp: {timestamp}\nContent: {chunk}\n\n"
+                        structured_context += f"Document Name: {doc_name}\nTimestamp: {timestamp}\nContext: {chunk}\n\n"
 
                     messages.append(
                         {"role": "assistant", "content": f"Here is the context I found:\n\n{structured_context}"})
@@ -115,15 +119,43 @@ if prompt := st.chat_input("How can I help you?"):
                 messages.append({"role": "user", "content": prompt})
 
                 # Call the LLM API with the context and user query
-                stream = client.chat.completions.create(
-                    model=st.session_state["openai_model"],
-                    messages=messages,
-                    temperature=float(os.getenv("TEMPERATURE", 0.1)),  # Loaded from .env
-                    top_p=float(os.getenv("TOP_P", 0.95)),  # Loaded from .env
-                    frequency_penalty=float(os.getenv("FREQUENCY_PENALTY", 0.0)),  # Loaded from .env
-                    presence_penalty=float(os.getenv("PRESENCE_PENALTY", 0.0)),  # Loaded from .env
-                    stream=True,
-                )
+                # Prepare the parameters for the LLM API call
+                params = {
+                    "model": st.session_state["openai_model"],
+                    "messages": messages,
+                    "stream": True
+                }
+
+                # Helper function to safely convert environment variables to float
+                def safe_float(value):
+                    if value is not None and value.lower() != 'none':
+                        return float(value)
+                    return None
+
+                # Conditionally add parameters from .env if they are not None
+                temperature = safe_float(os.getenv("TEMPERATURE"))
+                if temperature is not None:
+                    params["temperature"] = float(temperature)
+
+                top_p = safe_float(os.getenv("TOP_P"))
+                if top_p is not None:
+                    params["top_p"] = float(top_p)
+
+                top_k = safe_float(os.getenv("TOP_K"))
+                if top_p is not None:
+                    params["top_k"] = float(top_k)
+
+                frequency_penalty = safe_float(os.getenv("FREQUENCY_PENALTY"))
+                if frequency_penalty is not None:
+                    params["frequency_penalty"] = float(frequency_penalty)
+
+                presence_penalty = safe_float(os.getenv("PRESENCE_PENALTY"))
+                if presence_penalty is not None:
+                    params["presence_penalty"] = float(presence_penalty)
+
+                # Call the LLM API with the context and user query
+                stream = client.chat.completions.create(**params)
+
                 response = st.write_stream(stream)
             st.session_state.messages.append({"role": "assistant", "content": response})
 
