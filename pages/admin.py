@@ -136,26 +136,29 @@ def delete_index(index_name: str):
 # Sidebar settings
 st.sidebar.title("Admin Settings")
 
-indexes = [index for index in es.indices.get_alias(index="*").keys() if not index.startswith('.')]
+# Dropdown for index management actions
+index_action = st.sidebar.selectbox("Select Action", ["Create Index", "Delete Index"])
 
-st.sidebar.title("Manage Indexes")
+if index_action == "Create Index":
+    st.sidebar.subheader("Create a New Index")
+    new_index_name = st.sidebar.text_input("New Index Name")
+    dims = st.sidebar.number_input("Dimensions (dims)", min_value=1, value=1024)
+    if st.sidebar.button("Create Index"):
+        create_index(new_index_name, dims)
 
-selected_index_name = st.sidebar.selectbox("Select Index", options=indexes)
-
-new_index_name = st.sidebar.text_input("New Index Name")
-dims = st.sidebar.number_input("Dimensions (dims)", min_value=1, value=1024)
-
-if st.sidebar.button("Create Index"):
-    create_index(new_index_name, dims)
-
-if st.sidebar.button("Delete Index"):
-    delete_index(selected_index_name)
+elif index_action == "Delete Index":
+    st.sidebar.subheader("Delete an Index")
+    indexes = [index for index in es.indices.get_alias(index="*").keys() if not index.startswith('.')]
+    selected_index_name = st.sidebar.selectbox("Select Index to Delete", options=indexes)
+    if st.sidebar.button("Delete Index"):
+        delete_index(selected_index_name)
 
 uploaded_file = st.file_uploader("Upload a text, PDF, or Word document", type=["txt", "pdf", "docx"])
 
 if uploaded_file is not None:
     file_text = extract_text_from_file(uploaded_file)
     if file_text:
+        indexes = [index for index in es.indices.get_alias(index="*").keys() if not index.startswith('.')]
         index_for_upload = st.selectbox("Select Index to Upload Document", options=indexes)
         if st.button("Index Document"):
             index_text(index_for_upload, file_text, uploaded_file.name)
