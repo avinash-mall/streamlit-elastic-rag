@@ -1,0 +1,14 @@
+numpy<2
+streamlit
+elasticsearch
+sentence-transformers
+python-dotenv
+pymupdf
+requests
+regex
+python-docx
+tokenizers
+psutil
+openai
+streamlit_autorefresh
+semantic_text_splitter
