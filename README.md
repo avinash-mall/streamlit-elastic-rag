@@ -1,6 +1,3 @@
-# streamlit-elastic-rag
-A RAG using streamlit chat and elasticsearch using openai client.
-
 # Multilingual RAG Chat Application
 
 This project is a Multilingual Retrieval-Augmented Generation (RAG) chat application built with Streamlit, designed to process and interact with Multilingual PDF,Word,Text documents. The application features a semantic search pipeline, document embedding storage in Elasticsearch, and a chat interface for querying and retrieving relevant document segments.
@@ -20,6 +17,7 @@ This project is a Multilingual Retrieval-Augmented Generation (RAG) chat applica
 - Python 3.8 or higher
 - Elasticsearch 8.x
 - Git
+- Any openai api server (LLamafile, Ollama, Text-Generation-Webui etc. or OPENAI)
 
 ### Setup
 
@@ -27,7 +25,7 @@ This project is a Multilingual Retrieval-Augmented Generation (RAG) chat applica
 
    ```bash
    git clone https://github.com/avinash-mall/streamlit-elastic-rag.git
-   cd multilingual-rag-chat-app
+   cd streamlit-elastic-rag
    ```
 
 2. **Install required Python packages:**
