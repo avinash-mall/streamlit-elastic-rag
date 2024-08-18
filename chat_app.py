@@ -61,14 +61,18 @@ def search_elasticsearch(query):
         response = es.search(index="_all", body={
             "size": num_results,
             "query": {
-                "script_score": {
-                    "query": {
-                        "match_all": {}
-                    },
-                    "script": {
-                        "source": script_source,
-                        "params": {"query_vector": query_embedding}
-                    }
+                # "script_score": {
+                #     "query": {
+                #         "match_all": {}
+                #     },
+                #     "script": {
+                #         "source": script_source,
+                #         "params": {"query_vector": query_embedding}
+                #     }
+                # }
+                "knn": {
+                    "query_vector": query_embedding,
+                    "field": "embedding"
                 }
             }
         })
