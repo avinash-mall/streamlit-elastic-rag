@@ -45,15 +45,19 @@ if "system_instruction" not in st.session_state:
 # Sidebar settings
 st.sidebar.title("Settings")
 
+# Dropdown for selecting Elasticsearch index
+indexes = [index for index in es.indices.get_alias(index="*").keys() if not index.startswith('.')]
+selected_index = st.sidebar.selectbox("Select Elasticsearch Index", options=indexes)
+
 # Toggle for enabling debug mode
 debug_mode = st.sidebar.checkbox("Enable Debug Mode")
 
 # Utility Functions
-def search_elasticsearch(query):
+def search_elasticsearch(query, index_name):
     query_embedding = model.encode(query).tolist()
 
     try:
-        response = es.search(index="_all", body={
+        response = es.search(index=index_name, body={
             "query": {
                 "knn": {
                     "query_vector": query_embedding,
@@ -74,8 +78,6 @@ def search_elasticsearch(query):
     except Exception as e:
         print(f"General Error: {str(e)}")
 
-
-
 # Title of the app
 st.title("💬 RAG Chatbot")
 
@@ -94,7 +96,7 @@ if prompt := st.chat_input("How can I help you?"):
         with st.spinner("Thinking..."):
             with st.chat_message("assistant") as assistant_message:
                 # Retrieve context from Elasticsearch
-                hits = search_elasticsearch(prompt)
+                hits = search_elasticsearch(prompt, selected_index)
                 context_chunks = []
                 document_names = []
                 timestamps = []
