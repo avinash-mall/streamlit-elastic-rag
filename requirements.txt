@@ -12,3 +12,4 @@ psutil
 openai
 streamlit_autorefresh
 semantic_text_splitter
+multilingual_pdf2text
