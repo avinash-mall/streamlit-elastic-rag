@@ -4,7 +4,7 @@ This project is a Multilingual Retrieval-Augmented Generation (RAG) chat applica
 
 ## Features
 
-- **Multilingual Support:** Utilizes multilingual models for semantic search and document embedding.
+- **Multilingual Support:** Utilizes multilingual models for semantic search and document embedding as well as text extraction from pdf.
 - **Document Embedding:** Embeds documents into Elasticsearch using dense vectors for efficient k-nearest neighbor (kNN) search.
 - **Streamlit Frontend:** Provides an intuitive chat interface for querying the documents, with responses that include citations.
 - **Admin Interface:** Separate admin interface for uploading documents and managing settings.
@@ -15,9 +15,10 @@ This project is a Multilingual Retrieval-Augmented Generation (RAG) chat applica
 ### Prerequisites
 
 - Python 3.8 or higher
-- Elasticsearch 8.x
+- Elasticsearch 8.11 or higher
 - Git
-- Any openai api server (LLamafile, Ollama, Text-Generation-Webui etc. or OPENAI)
+- Any openai api server (LLamafile, Ollama, Text-Generation-Webui etc. or OPENAI api)
+- tesseract-ocr (Install from https://tesseract-ocr.github.io/tessdoc/Installation.html. Install Additional languages as required.)
 
 ### Setup
 
