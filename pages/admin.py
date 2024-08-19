@@ -13,9 +13,117 @@ from docx import Document
 import regex as re
 import psutil
 import requests
-import time
+import pytz
 import pandas as pd
 import warnings
+from multilingual_pdf2text.pdf2text import PDF2Text
+from multilingual_pdf2text.models.document_model.document import Document
+
+# Supported languages for OCR
+language_options = {
+    "eng": "English",
+    "ara": "Arabic",
+    "afr": "Afrikaans",
+    "amh": "Amharic",
+    "asm": "Assamese",
+    "aze": "Azerbaijani",
+    "aze_cyrl": "Azerbaijani - Cyrillic",
+    "bel": "Belarusian",
+    "ben": "Bengali",
+    "bod": "Tibetan",
+    "bos": "Bosnian",
+    "bul": "Bulgarian",
+    "cat": "Catalan; Valencian",
+    "ceb": "Cebuano",
+    "ces": "Czech",
+    "chi_sim": "Chinese - Simplified",
+    "chi_tra": "Chinese - Traditional",
+    "chr": "Cherokee",
+    "cym": "Welsh",
+    "dan": "Danish",
+    "deu": "German",
+    "dzo": "Dzongkha",
+    "ell": "Greek, Modern (1453-)",
+    "enm": "English, Middle (1100-1500)",
+    "epo": "Esperanto",
+    "est": "Estonian",
+    "eus": "Basque",
+    "fas": "Persian",
+    "fin": "Finnish",
+    "fra": "French",
+    "frk": "German Fraktur",
+    "frm": "French, Middle (ca. 1400-1600)",
+    "gle": "Irish",
+    "glg": "Galician",
+    "grc": "Greek, Ancient (-1453)",
+    "guj": "Gujarati",
+    "hat": "Haitian; Haitian Creole",
+    "heb": "Hebrew",
+    "hin": "Hindi",
+    "hrv": "Croatian",
+    "hun": "Hungarian",
+    "iku": "Inuktitut",
+    "ind": "Indonesian",
+    "isl": "Icelandic",
+    "ita": "Italian",
+    "ita_old": "Italian - Old",
+    "jav": "Javanese",
+    "jpn": "Japanese",
+    "kan": "Kannada",
+    "kat": "Georgian",
+    "kat_old": "Georgian - Old",
+    "kaz": "Kazakh",
+    "khm": "Central Khmer",
+    "kir": "Kirghiz; Kyrgyz",
+    "kor": "Korean",
+    "kur": "Kurdish",
+    "lao": "Lao",
+    "lat": "Latin",
+    "lav": "Latvian",
+    "lit": "Lithuanian",
+    "mal": "Malayalam",
+    "mar": "Marathi",
+    "mkd": "Macedonian",
+    "mlt": "Maltese",
+    "msa": "Malay",
+    "mya": "Burmese",
+    "nep": "Nepali",
+    "nld": "Dutch; Flemish",
+    "nor": "Norwegian",
+    "ori": "Oriya",
+    "pan": "Panjabi; Punjabi",
+    "pol": "Polish",
+    "por": "Portuguese",
+    "pus": "Pushto; Pashto",
+    "ron": "Romanian; Moldavian; Moldovan",
+    "rus": "Russian",
+    "san": "Sanskrit",
+    "sin": "Sinhala; Sinhalese",
+    "slk": "Slovak",
+    "slv": "Slovenian",
+    "spa": "Spanish; Castilian",
+    "spa_old": "Spanish; Castilian - Old",
+    "sqi": "Albanian",
+    "srp": "Serbian",
+    "srp_latn": "Serbian - Latin",
+    "swa": "Swahili",
+    "swe": "Swedish",
+    "syr": "Syriac",
+    "tam": "Tamil",
+    "tel": "Telugu",
+    "tgk": "Tajik",
+    "tgl": "Tagalog",
+    "tha": "Thai",
+    "tir": "Tigrinya",
+    "tur": "Turkish",
+    "uig": "Uighur; Uyghur",
+    "ukr": "Ukrainian",
+    "urd": "Urdu",
+    "uzb": "Uzbek",
+    "uzb_cyrl": "Uzbek - Cyrillic",
+    "vie": "Vietnamese",
+    "yid": "Yiddish"
+}
 
 # Suppress Elasticsearch system indices warnings
 warnings.filterwarnings("ignore", category=ElasticsearchWarning)
@@ -44,9 +152,18 @@ st.title("🔧 Admin Page")
 
 # Utility Functions
 def clean_text(text):
+    if text is None:
+        return ""
+    if isinstance(text, list):
+        # Extract the 'text' field from each dictionary and join them into a single string
+        text = " ".join(item['text'] if isinstance(item, dict) and 'text' in item else str(item) for item in text)
+    if not isinstance(text, str):
+        raise TypeError("Expected a string for cleaning, but got {}".format(type(text)))
+
     text = re.sub(r'[^\P{C}]+', '', text)
     text = re.sub(r'\s{2,}', ' ', text)
     return text.strip()
+
 
 
 def split_text_semantically(text):
@@ -61,7 +178,30 @@ def generate_unique_id(text):
     return unique_id
 
 
-def extract_text_from_pdf(file):
+# Function to extract text from PDF using multilingual-pdf2text
+def extract_text_from_pdf_ocr(file, language):
+    # Save the file temporarily
+    temp_file_path = f"/tmp/{file.name}"
+    with open(temp_file_path, "wb") as temp_file:
+        temp_file.write(file.getbuffer())
+    # Create the Document object for extraction
+    pdf_document = Document(
+        document_path=temp_file_path,  # Path to the temporary file
+        language=language  # Selected language
+    )
+    # Initialize the PDF2Text object with the Document
+    pdf2text = PDF2Text(document=pdf_document)
+    # Extract the content from the PDF
+    content = pdf2text.extract()
+    # Clean up: Remove the temporary file after extraction
+    os.remove(temp_file_path)
+    # Print the content to inspect its structure
+    #print("OCR Extracted Content:", content)
+    return clean_text(content)
+
+
+# Function to extract text from PDF using fitz
+def extract_text_from_pdf_fitz(file):
     pdf_document = fitz.open(stream=file.read(), filetype="pdf")
     text = ''
     for page_num in range(len(pdf_document)):
@@ -69,6 +209,16 @@ def extract_text_from_pdf(file):
         text += page.get_text()
     pdf_document.close()
     return clean_text(text)
+
+
+# Function to extract text based on user selection
+def extract_text_from_pdf(file, method, language=None):
+    if method == "Read Using PDF OCR":
+        return extract_text_from_pdf_ocr(file, language)
+    elif method == "Read Normal":
+        return extract_text_from_pdf_fitz(file)
+    else:
+        return None
 
 
 def extract_text_from_file(uploaded_file):
@@ -94,7 +244,12 @@ def extract_text_from_word(file):
 
 def index_text(index_name, text, document_name, total_files, file_number):
     clean_text_content = clean_text(text)
-    timestamp = datetime.now().isoformat()
+    # Get the current local time
+    local_time = datetime.now()
+    # Convert local time to UTC
+    utc_time = local_time.astimezone(pytz.utc)
+    # Use this UTC time for indexing
+    timestamp = utc_time.isoformat()
     chunks = split_text_semantically(clean_text_content)
     total_chunks = len(chunks)
     progress_text = f"Indexing document {file_number}/{total_files}. Please wait..."
@@ -227,14 +382,52 @@ uploaded_files = st.file_uploader("Upload text, PDF, or Word documents", type=["
 
 if uploaded_files:
     indexes = [index for index in es.indices.get_alias(index="*").keys() if not index.startswith('.')]
-    index_for_upload = st.selectbox("Select Index to Upload Documents", options=indexes)
-    if st.button("Index Documents"):
+    index_for_upload = st.selectbox("Select Index to Upload Document", options=indexes)
+
+    # Show dropdown to choose extraction method for all files
+    extraction_method = st.selectbox("Choose extraction method for all PDFs", ["Read Normal", "Read Using PDF OCR"])
+
+    # If OCR is selected, show the multi-select for languages
+    if extraction_method == "Read Using PDF OCR":
+        selected_languages = st.multiselect(
+            "Choose OCR Languages for all PDFs",
+            options=["eng", "ara"] + sorted([key for key in language_options.keys() if key not in ["eng", "ara"]]),
+            format_func=lambda x: language_options.get(x, x)
+        )
+
+        if selected_languages:
+            # Combine the selected languages into the format required (e.g., "deu+eng")
+            language = "+".join(selected_languages)
+            st.write(f"Selected languages: {language}")
+        else:
+            st.error("Please select at least one language.")
+    else:
+        language = None  # No language needed for normal reading
+
+    if st.button("Index All Documents"):
         total_files = len(uploaded_files)
         for file_number, uploaded_file in enumerate(uploaded_files, start=1):
-            file_text = extract_text_from_file(uploaded_file)
+            file_type = uploaded_file.type
+            progress_text = f"Processing document {file_number}/{total_files}. Please wait..."
+            my_bar = st.progress(0, text=progress_text)
+
+            # Step 1: Text Extraction (50% of the progress)
+            if file_type == "application/pdf":
+                file_text = extract_text_from_pdf(uploaded_file, extraction_method, language)
+            else:
+                # Handle non-PDF files as before
+                file_text = extract_text_from_file(uploaded_file)
+
             if file_text:
-                index_text(index_for_upload, file_text, uploaded_file.name, total_files, file_number)
-        st.success(f"All documents indexed successfully in '{index_for_upload}'.")
+                my_bar.progress(50, text=f"Document {file_number}/{total_files} - Text extracted successfully.")
+
+                # Step 2: Indexing (remaining 50% of the progress)
+                index_text(index_for_upload, file_text, uploaded_file.name, total_files=total_files,
+                           file_number=file_number)
+                my_bar.progress(100, text=f"Document {file_number}/{total_files} - Indexed successfully.")
+                st.success(f"Document '{uploaded_file.name}' indexed successfully in '{index_for_upload}'.")
+
+        st.success(f"All documents have been indexed successfully in '{index_for_upload}'.")
 
 default_display_metrics = os.getenv("DEFAULT_DISPLAY_METRICS", "False").lower() == "true"
 display_metrics = st.sidebar.checkbox("Display CPU, Memory, and Model Health", value=default_display_metrics)
