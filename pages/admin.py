@@ -16,113 +16,23 @@ import requests
 import pytz
 import pandas as pd
 import warnings
-from multilingual_pdf2text.pdf2text import PDF2Text
-from multilingual_pdf2text.models.document_model.document import Document
+from PIL import Image
+import pytesseract
+import io
+import re
+import unicodedata
+from langdetect import detect
+from bidi.algorithm import get_display
 
 # Supported languages for OCR
 language_options = {
     "eng": "English",
     "ara": "Arabic",
-    "afr": "Afrikaans",
-    "amh": "Amharic",
-    "asm": "Assamese",
-    "aze": "Azerbaijani",
-    "aze_cyrl": "Azerbaijani - Cyrillic",
-    "bel": "Belarusian",
-    "ben": "Bengali",
-    "bod": "Tibetan",
-    "bos": "Bosnian",
-    "bul": "Bulgarian",
-    "cat": "Catalan; Valencian",
-    "ceb": "Cebuano",
-    "ces": "Czech",
     "chi_sim": "Chinese - Simplified",
-    "chi_tra": "Chinese - Traditional",
-    "chr": "Cherokee",
-    "cym": "Welsh",
-    "dan": "Danish",
-    "deu": "German",
-    "dzo": "Dzongkha",
-    "ell": "Greek, Modern (1453-)",
-    "enm": "English, Middle (1100-1500)",
-    "epo": "Esperanto",
-    "est": "Estonian",
-    "eus": "Basque",
-    "fas": "Persian",
-    "fin": "Finnish",
     "fra": "French",
-    "frk": "German Fraktur",
-    "frm": "French, Middle (ca. 1400-1600)",
-    "gle": "Irish",
-    "glg": "Galician",
-    "grc": "Greek, Ancient (-1453)",
-    "guj": "Gujarati",
-    "hat": "Haitian; Haitian Creole",
-    "heb": "Hebrew",
     "hin": "Hindi",
-    "hrv": "Croatian",
-    "hun": "Hungarian",
-    "iku": "Inuktitut",
-    "ind": "Indonesian",
-    "isl": "Icelandic",
     "ita": "Italian",
-    "ita_old": "Italian - Old",
-    "jav": "Javanese",
-    "jpn": "Japanese",
-    "kan": "Kannada",
-    "kat": "Georgian",
-    "kat_old": "Georgian - Old",
-    "kaz": "Kazakh",
-    "khm": "Central Khmer",
-    "kir": "Kirghiz; Kyrgyz",
-    "kor": "Korean",
-    "kur": "Kurdish",
-    "lao": "Lao",
-    "lat": "Latin",
-    "lav": "Latvian",
-    "lit": "Lithuanian",
-    "mal": "Malayalam",
-    "mar": "Marathi",
-    "mkd": "Macedonian",
-    "mlt": "Maltese",
-    "msa": "Malay",
-    "mya": "Burmese",
-    "nep": "Nepali",
-    "nld": "Dutch; Flemish",
-    "nor": "Norwegian",
-    "ori": "Oriya",
-    "pan": "Panjabi; Punjabi",
-    "pol": "Polish",
-    "por": "Portuguese",
-    "pus": "Pushto; Pashto",
-    "ron": "Romanian; Moldavian; Moldovan",
-    "rus": "Russian",
-    "san": "Sanskrit",
-    "sin": "Sinhala; Sinhalese",
-    "slk": "Slovak",
-    "slv": "Slovenian",
-    "spa": "Spanish; Castilian",
-    "spa_old": "Spanish; Castilian - Old",
-    "sqi": "Albanian",
-    "srp": "Serbian",
-    "srp_latn": "Serbian - Latin",
-    "swa": "Swahili",
-    "swe": "Swedish",
-    "syr": "Syriac",
-    "tam": "Tamil",
-    "tel": "Telugu",
-    "tgk": "Tajik",
-    "tgl": "Tagalog",
-    "tha": "Thai",
-    "tir": "Tigrinya",
-    "tur": "Turkish",
-    "uig": "Uighur; Uyghur",
-    "ukr": "Ukrainian",
-    "urd": "Urdu",
-    "uzb": "Uzbek",
-    "uzb_cyrl": "Uzbek - Cyrillic",
-    "vie": "Vietnamese",
-    "yid": "Yiddish"
+    "jpn": "Japanese"
 }
 
 # Suppress Elasticsearch system indices warnings
@@ -144,7 +54,7 @@ model = SentenceTransformer(os.getenv("MODEL_PATH"))
 tokenizer_path = os.getenv("TOKENIZER_PATH")
 tokenizer = Tokenizer.from_file(os.path.join(tokenizer_path, "tokenizer.json"))
 max_tokens = int(os.getenv("MAX_TOKENS"))
-splitter = TextSplitter.from_huggingface_tokenizer(tokenizer, max_tokens)
+splitter = TextSplitter.from_huggingface_tokenizer(tokenizer, max_tokens, trim=False)
 
 # Admin page title
 st.title("🔧 Admin Page")
@@ -154,15 +64,46 @@ st.title("🔧 Admin Page")
 def clean_text(text):
     if text is None:
         return ""
+
     if isinstance(text, list):
         # Extract the 'text' field from each dictionary and join them into a single string
         text = " ".join(item['text'] if isinstance(item, dict) and 'text' in item else str(item) for item in text)
-    if not isinstance(text, str):
-        raise TypeError("Expected a string for cleaning, but got {}".format(type(text)))
 
-    text = re.sub(r'[^\P{C}]+', '', text)
-    text = re.sub(r'\s{2,}', ' ', text)
-    return text.strip()
+    if not isinstance(text, str):
+        raise TypeError(f"Expected a string for cleaning, but got {type(text)}")
+
+    # Detect language of the text
+    try:
+        language = detect(text)
+    except:
+        language = "unknown"  # fallback if detection fails
+
+    # Normalize Unicode characters (NFC or NFKC)
+    text = unicodedata.normalize('NFKC', text)
+
+    # Handle whitespace: replace multiple spaces with a single space
+    text = re.sub(r'\s+', ' ', text)
+
+    if language == "ar":
+        # Arabic-specific cleaning: remove unwanted characters or diacritics
+        arabic_cleaner = re.compile(r'[\u064B-\u065F\u0610-\u061A\u06D6-\u06ED\uFE70-\uFEFF]')
+        text = arabic_cleaner.sub('', text)
+
+    elif language == "en":
+        # English-specific cleaning: convert to lowercase (if required)
+        text = text.lower()
+
+    # Remove unwanted symbols (keeping Arabic, English letters, and basic punctuation)
+    text = re.sub(r'[^\w\s\u0600-\u06FF.,!?;:()\[\]{}\'"-]', '', text)
+
+    # Strip leading/trailing whitespace
+    text = text.strip()
+
+    # Handle directional issues for mixed Arabic and English text
+    if language == "ar" or "arabic" in text:
+        text = get_display(text)
+
+    return text
 
 
 
@@ -180,24 +121,18 @@ def generate_unique_id(text):
 
 # Function to extract text from PDF using multilingual-pdf2text
 def extract_text_from_pdf_ocr(file, language):
-    # Save the file temporarily
-    temp_file_path = f"/tmp/{file.name}"
-    with open(temp_file_path, "wb") as temp_file:
-        temp_file.write(file.getbuffer())
-    # Create the Document object for extraction
-    pdf_document = Document(
-        document_path=temp_file_path,  # Path to the temporary file
-        language=language  # Selected language
-    )
-    # Initialize the PDF2Text object with the Document
-    pdf2text = PDF2Text(document=pdf_document)
-    # Extract the content from the PDF
-    content = pdf2text.extract()
-    # Clean up: Remove the temporary file after extraction
-    os.remove(temp_file_path)
-    # Print the content to inspect its structure
-    #print("OCR Extracted Content:", content)
-    return clean_text(content)
+    pdf_document = fitz.open(stream=file.read(), filetype="pdf")
+    extracted_text = ""
+
+    for page_num in range(len(pdf_document)):
+        page = pdf_document.load_page(page_num)
+        pix = page.get_pixmap()
+        img = Image.open(io.BytesIO(pix.tobytes()))
+        page_text = pytesseract.image_to_string(img, lang=language)
+        extracted_text += page_text + "\n"
+
+    pdf_document.close()
+    return clean_text(extracted_text)
 
 
 # Function to extract text from PDF using fitz
@@ -313,9 +248,10 @@ def list_documents(index_name: str):
 
 
 # Index Management Functions
-def create_index(index_name: str, dims: int):
+def create_index(index_name: str):
     field_name = "embedding"
     similarity_type = os.getenv("SIMILARITY_TYPE", "cosine")
+    default_dims = int(os.getenv("DEFAULT_DIMS", 1024))  # Use the DEFAULT_DIMS from .env
 
     if es.indices.exists(index=index_name):
         st.error("Index already exists")
@@ -325,7 +261,7 @@ def create_index(index_name: str, dims: int):
         "properties": {
             field_name: {
                 "type": "dense_vector",
-                "dims": dims,
+                "dims": default_dims,
                 "index": "true",
                 "similarity": similarity_type,
             }
@@ -333,7 +269,8 @@ def create_index(index_name: str, dims: int):
     }
 
     es.indices.create(index=index_name, body={"mappings": mappings})
-    st.success(f"Index '{index_name}' with {dims} dimensions and similarity '{similarity_type}' created successfully")
+    st.success(f"Index '{index_name}' with {default_dims} dimensions and similarity '{similarity_type}' created successfully")
+
 
 
 def delete_index(index_name: str):
@@ -353,9 +290,16 @@ index_action = st.sidebar.selectbox("Select Action", ["Create Index", "Delete In
 if index_action == "Create Index":
     st.sidebar.subheader("Create a New Index")
     new_index_name = st.sidebar.text_input("New Index Name")
-    dims = st.sidebar.number_input("Dimensions (dims)", min_value=1, value=1024)
+
     if st.sidebar.button("Create Index"):
-        create_index(new_index_name, dims)
+        if not new_index_name.strip():
+            st.sidebar.error("Index name cannot be empty.")
+        elif any(char in new_index_name for char in r'\/:*?"<>|'):
+            st.sidebar.error("Index name contains invalid characters.")
+        else:
+            create_index(new_index_name)
+            st.sidebar.success(f"Index '{new_index_name}' created successfully.")
+
 
 elif index_action == "Delete Index":
     st.sidebar.subheader("Delete an Index")
