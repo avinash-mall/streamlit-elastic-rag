@@ -5,6 +5,7 @@ This project is a Multilingual Retrieval-Augmented Generation (RAG) chat applica
 ## Features
 
 - **Multilingual Support:** Utilizes multilingual models for semantic search and document embedding as well as text extraction from pdf.
+- **Offline Support:** All the models required can be downloaded using provided scripts. Can be used in an offline environment.
 - **Document Embedding:** Embeds documents into Elasticsearch using dense vectors for efficient k-nearest neighbor (kNN) search.
 - **Streamlit Frontend:** Provides an intuitive chat interface for querying the documents, with responses that include citations.
 - **Admin Interface:** Separate admin interface for uploading documents and managing settings.
@@ -75,6 +76,11 @@ This project is a Multilingual Retrieval-Augmented Generation (RAG) chat applica
 2. **Chat Interface:**
    - Users can query the uploaded documents through the chat interface.
    - The app will return relevant document segments with citations.
+
+3. **Notes:**
+   - If you are using OCR for pdf you need to install tesseract-ocr.
+   - In .env Once you choose a SIMILARITY_TYPE as any one of dot_product(you have to normalize the chunks), cosine(recommended), max_inner_product(best recommended), l1norm, hamming, l2norm to create an elastic index, if you want to change it, you have to drop the index and re-create and re-index all your data.
+   - Only sentence-transformer based embedding/tokenizer models are supported as of now and hugging-face based are work in progress. Adjust DEFAULT_DIMS to the dimensions of your model. multilingual-e5-large uses 1024 dims.
 
 ## License
 
