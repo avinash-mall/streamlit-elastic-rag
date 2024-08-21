@@ -7,8 +7,8 @@ This project is a Multilingual Retrieval-Augmented Generation (RAG) chat applica
 - **Multilingual Support:** Utilizes multilingual models for semantic search and document embedding as well as text extraction from pdf.
 - **Offline Support:** All the models required can be downloaded using provided scripts. Can be used in an offline environment.
 - **Document Embedding:** Embeds documents into Elasticsearch using dense vectors for efficient k-nearest neighbor (kNN) search.
-- **Streamlit Frontend:** Provides an intuitive chat interface for querying the documents, with responses that include citations.
-- **Admin Interface:** Separate admin interface for uploading documents and managing settings.
+- **Streamlit Frontend:** Provides an intuitive chat interface for querying the documents, with responses that include citations. A conversational chatbot which is context aware.
+- **Admin Interface:** Separate admin interface for uploading documents and managing settings. Handle scanned documents using OCR.
 - **Multiple User Support:** Capable of handling multiple users simultaneously.
 
 ## Installation
