@@ -1,0 +1,34 @@
+root ::= "{" ws01 root-response "}" ws01
+root-response ::= "\"response\"" ":" ws01 "{" ws01 root-response-Reference "," ws01 root-response-Added-on "," ws01 root-response-Answer "}"
+root-response-Reference ::= "\"Reference\"" ":" ws01 string
+root-response-Added-on ::= "\"Added on\"" ":" ws01 string
+root-response-Answer ::= "\"Answer\"" ":" ws01 string
+
+
+value  ::= (object | array | string | number | boolean | null) ws
+
+object ::=
+  "{" ws (
+    string ":" ws value
+    ("," ws string ":" ws value)*
+  )? "}"
+
+array  ::=
+  "[" ws01 (
+            value
+    ("," ws01 value)*
+  )? "]"
+
+string ::=
+  "\"" (string-char)* "\""
+
+string-char ::= [^"\\] | "\\" (["\\/bfnrt] | "u" [0-9a-fA-F] [0-9a-fA-F] [0-9a-fA-F] [0-9a-fA-F]) # escapes
+
+number ::= integer ("." [0-9]+)? ([eE] [-+]? [0-9]+)?
+integer ::= "-"? ([0-9] | [1-9] [0-9]*)
+boolean ::= "true" | "false"
+null ::= "null"
+
+# Optional space: by convention, applied in this grammar after literal chars when allowed
+ws ::= ([ \t\n] ws)?
+ws01 ::= ([ \t\n])?
