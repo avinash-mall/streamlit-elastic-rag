@@ -28,7 +28,7 @@ OPENAI_MODEL = os.getenv("OPENAI_MODEL")
 instruction_prompt = os.getenv("INSTRUCTION_PROMPT")
 num_results = int(os.getenv("NUM_RESULTS", 10))  # Default to 10 if not provided
 num_candidates = int(os.getenv("NUM_CANDIDATES", 100))
-min_score = float(os.getenv("MIN_SCORE", 1.7))
+min_score = float(os.getenv("MIN_SCORE", 1.78))
 
 # Set page configuration
 st.set_page_config(page_title="RAG Chatbot", page_icon="💬", layout="wide")
@@ -56,6 +56,7 @@ selected_index = st.sidebar.selectbox("Select Elasticsearch Index", options=inde
 # Toggle for enabling debug mode
 debug_mode = st.sidebar.checkbox("Enable Debug Mode")
 
+
 # Utility Functions
 def search_elasticsearch(query, index_name):
     query_embedding = model.encode(query).tolist()
@@ -81,6 +82,7 @@ def search_elasticsearch(query, index_name):
         print(f"Connection Error: {e.errors}")
     except Exception as e:
         print(f"General Error: {str(e)}")
+
 
 # Title of the app
 st.title("💬 RAG Chatbot")
@@ -110,33 +112,36 @@ if prompt := st.chat_input("How can I help you?"):
                     timestamps = [hit['_source']['timestamp'] for hit in hits]
                 context = "\n".join(context_chunks)
 
-                # Prepare messages for LLM with structured context
-                messages = [{"role": "system",
-                             "content": st.session_state.system_instruction}] if st.session_state.system_instruction else []
-                if context_chunks:
-                    # Adding structured context with document names and timestamps
-                    structured_context = ""
-                    for chunk, doc_name, timestamp in zip(context_chunks, document_names, timestamps):
-                        structured_context += f"Document Name: {doc_name}\nTimestamp: {timestamp}\nContext: {chunk}\n\n"
+                # Prepare the full conversation history
+                messages = [{"role": message["role"], "content": message["content"]}
+                            for message in st.session_state.messages]
 
+                # Adding the structured context to the messages
+                if context_chunks:
+                    structured_context = "\n".join(
+                        [f"Document Name: {doc_name}\nTimestamp: {timestamp}\nContext: {chunk}"
+                         for chunk, doc_name, timestamp in zip(context_chunks, document_names, timestamps)]
+                    )
                     messages.append(
                         {"role": "assistant", "content": f"Here is the context I found:\n\n{structured_context}"})
 
+                # Include the new user prompt
                 messages.append({"role": "user", "content": prompt})
 
-                # Call the LLM API with the context and user query
-                # Prepare the parameters for the LLM API call
+                # Call the LLM API with the full conversation and new context
                 params = {
                     "model": st.session_state["openai_model"],
                     "messages": messages,
                     "stream": True
                 }
 
+
                 # Helper function to safely convert environment variables to float
                 def safe_float(value):
                     if value is not None and value.lower() != 'none':
                         return float(value)
                     return None
+
 
                 # Conditionally add parameters from .env if they are not None
                 temperature = safe_float(os.getenv("TEMPERATURE"))
@@ -167,12 +172,39 @@ if prompt := st.chat_input("How can I help you?"):
 
             # If debug mode is enabled, display debug information
             if debug_mode:
-                st.write("**Debug Information:**")
-                st.write("**Instruction Prompt:**", st.session_state.system_instruction)
-                st.write("**User Query:**", prompt)
-                st.write("**Retrieved Context Chunks:**", context_chunks)
-                st.write("**Messages Sent to LLM:**", messages)
-                st.write("**LLM Response:**", response)
+                st.write("### Debug Information")
+
+                # Show the Elasticsearch response as JSON
+                st.subheader("Elasticsearch Raw Response")
+                st.json(hits)  # Display raw JSON of the Elasticsearch response
+
+                # Show the structured context in a table
+                st.subheader("Structured Context")
+                context_data = {
+                    "Document Name": document_names,
+                    "Timestamp": timestamps,
+                    "Context": context_chunks
+                }
+                st.table(context_data)  # Display the context as a table
+
+                # Show the messages being sent to the LLM as code
+                st.subheader("LLM API Call")
+                st.code({
+                    "model": st.session_state["openai_model"],
+                    "messages": messages,
+                    "stream": True,
+                    "parameters": {
+                        "temperature": safe_float(os.getenv("TEMPERATURE")),
+                        "top_p": safe_float(os.getenv("TOP_P")),
+                        "top_k": safe_float(os.getenv("TOP_K")),
+                        "frequency_penalty": safe_float(os.getenv("FREQUENCY_PENALTY")),
+                        "presence_penalty": safe_float(os.getenv("PRESENCE_PENALTY")),
+                    }
+                }, language='json')
+
+                # Show the final response from the LLM
+                st.subheader("LLM Response")
+                st.markdown(response)  # Display the assistant's final response
     except APIConnectionError as e:
         st.error("The server could not be reached.")
         st.error(f"Details: {e.__cause__}")
